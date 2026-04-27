@@ -1,0 +1,29 @@
+1 Contextualização
+
+O Smosaic é um pacote Python de código aberto projetado para facilitar a criação de cubos de dados e mosaicos de imagens de satélite utilizando as coleções do Brazil Data Cube (BDC). Atualmente, a ferramenta gera composições temporais baseadas em critérios de seleção e ordenação das cenas como um todo. Os métodos suportados no parâmetro mosaic_method incluem:
+
+"lcf" (Least Cloud-cover First): prioriza a cena com menor cobertura de nuvens.
+
+"chrono" (Chronological): ordena as imagens de forma cronológica.
+
+"ctd" (Closest to Date): prioriza a imagem mais próxima de uma data de referência.
+
+Embora eficientes, esses métodos selecionam pixels com base nos metadados da cena de origem. Há uma necessidade de realizar agregações matemáticas em nível de pixel ao longo do tempo para criar novas composições sintéticas da superfície.
+
+2 Objetivo Principal
+
+O objetivo deste trabalho é desenvolver e integrar novas funções de composição temporal no pacote Smosaic.
+
+As novas funções de composição temporal que devem ser adicionadas são: média, mediana, min(x) e max(x).
+
+Average (avg): calcula a média dos valores dos pixels disponíveis. Observação: deve haver um parâmetro para desconsiderar a ocorrência de nuvens e sombras de nuvens.
+
+Median (med): calcula a mediana dos valores dos pixels disponíveis. Observação: deve haver um parâmetro para desconsiderar a ocorrência de nuvens e sombras de nuvens.
+
+MinX (minx): seleciona o x-ésimo menor valor da série temporal. Por exemplo, se x = 1, a função deve extrair o pixel com o menor valor disponível; se x = 2, deve extrair o segundo menor valor, e assim por diante.
+
+MaxX (maxx): atua de maneira análoga à função anterior, porém selecionando o x-ésimo maior valor disponível.
+
+O que se espera da nova funcionalidade?
+
+O pacote deverá ser capaz de empilhar todas as observações de um determinado período (ex.: de janeiro a março) e, para cada coordenada espacial (x, y), ordenar os valores e extrair matematicamente o valor de acordo com a composição selecionada, média, mediana, x-ésimo menor ou maior valor espectral ocorrido na série. Gerando ao final uma nova imagem composta pelo resultado das funções para cada pixel.

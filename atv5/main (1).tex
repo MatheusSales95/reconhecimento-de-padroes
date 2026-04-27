@@ -1,0 +1,347 @@
+\documentclass[11pt,a4paper]{article}
+
+% ====== Pacotes ======
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage[a4paper, margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage[expansion=false]{microtype}
+\usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=blue!60!black,
+  urlcolor=blue!60!black,
+}
+
+% ====== Estilo de listings ======
+\definecolor{codegray}{RGB}{245,245,245}
+\definecolor{codegreen}{RGB}{0,128,0}
+\definecolor{codeblue}{RGB}{0,0,180}
+\definecolor{codered}{RGB}{170,30,30}
+\lstset{
+  language=Python,
+  backgroundcolor=\color{codegray},
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{codeblue}\bfseries,
+  commentstyle=\color{codegreen}\itshape,
+  stringstyle=\color{codered},
+  numbers=left, numberstyle=\tiny\color{gray},
+  numbersep=6pt,
+  frame=single, framerule=0.3pt, rulecolor=\color{gray!50},
+  breaklines=true, breakatwhitespace=true,
+  showstringspaces=false,
+  captionpos=b,
+  xleftmargin=10pt,
+  tabsize=2,
+}
+
+% ====== Atalhos ======
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\hatp}{\hat p}
+
+% ====== Frente do documento ======
+\title{\textbf{Reconhecimento de Padrões} \\[0.4em]
+       \large Agrupamento via BSAS, Janelas de Parzen e KNN}
+\author{Aluno -- Disciplina de Reconhecimento de Padrões}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent
+Este trabalho implementa e avalia três propostas de agrupamento sobre os conjuntos de dados \emph{Iris} e \emph{Wine}.
+A primeira proposta combina o método BSAS, usado para \textbf{estimar} o número de agrupamentos por análise da derivada discreta da curva $c(\tau)$, com o agrupamento hierárquico de Ward, responsável pelo \textbf{particionamento} efetivo.
+A segunda e a terceira propostas utilizam, respectivamente, \textbf{Janelas de Parzen} (com uma estratégia \emph{mode-seeking} via \emph{mean-shift} sobre a densidade estimada) e \textbf{KNN} (com grafo de vizinhança mútua e filtragem por densidade).
+Todos os experimentos foram conduzidos no espaço padronizado ($z$-score) e a avaliação foi feita de forma qualitativa por meio de visualizações PCA-2D, matrizes de confusão e índices ARI/NMI.
+\end{abstract}
+
+% =========================================================
+\section{Introdução e formulação}
+% =========================================================
+O problema de agrupamento consiste em particionar um conjunto $\mathcal{D} = \{x_i \in \R^n : i = 1, \dots, m\}$ em $K$ subconjuntos disjuntos sem rótulos disponíveis durante o ajuste.
+Tipicamente, $K$ é desconhecido: identificá-lo a partir dos próprios dados é parte central da tarefa.
+Métodos baseados em distância (BSAS, $K$-médias, hierárquicos) supõem agrupamentos compactos em torno de centros; métodos baseados em densidade (Parzen, KNN, DBSCAN) particionam pelo suporte da função de densidade subjacente.
+Ambas as famílias são exploradas neste trabalho.
+
+\paragraph{Datasets.}
+Trabalhamos com dois conjuntos clássicos do UCI/\texttt{sklearn}.
+\emph{Iris} possui $m=150$ observações em $\R^4$ distribuídas em três classes.
+\emph{Wine} possui $m=178$ observações em $\R^{13}$ também em três classes.
+Em \emph{Wine}, atributos como \emph{proline} aparecem em ordens de centenas a milhares, enquanto outros (e.g.\ \emph{ash}) ficam próximos a $2$. Como todos os métodos aqui usados se apoiam em distâncias euclidianas, atributos de maior escala dominariam o cálculo. Por isso, padronizamos cada atributo via $z$-score:
+\begin{equation}
+  \tilde{x}_{ij} = \frac{x_{ij} - \mu_j}{\sigma_j}, \qquad j = 1, \dots, n.
+\end{equation}
+A projeção bidimensional via PCA é usada \emph{apenas} para visualização; o agrupamento ocorre no espaço padronizado original.
+A Figura~\ref{fig:dados} apresenta os dados padronizados projetados em duas componentes principais.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figs/dados_pca.pdf}
+  \caption{Projeção PCA-2D dos conjuntos \emph{Iris} e \emph{Wine} padronizados, coloridos pelos rótulos de classe verdadeiros (não utilizados pelos algoritmos de agrupamento).}
+  \label{fig:dados}
+\end{figure}
+
+% =========================================================
+\section{Questão 1 -- BSAS combinado com agrupamento hierárquico}
+% =========================================================
+\subsection{Ideia e formulação}
+O \emph{Basic Sequential Algorithmic Scheme} (BSAS) atribui cada padrão ao agrupamento mais próximo se a dissimilaridade ao representante deste agrupamento for menor que um limiar $\tau$; caso contrário, cria um novo agrupamento, respeitando um número máximo $q$ de agrupamentos permitidos.
+Essa formulação produz o número de agrupamentos $c(\tau)$ como uma função do parâmetro $\tau$ e da \emph{ordem de apresentação} dos dados.
+
+Para $\tau$ muito pequeno, quase todo padrão dispara a criação de um novo agrupamento e $c(\tau) \to m$.
+Para $\tau$ muito grande, todos os padrões caem em um único agrupamento e $c(\tau) = 1$.
+Entre os extremos, observa-se um \textbf{patamar} -- intervalo no qual $c(\tau)$ permanece (aproximadamente) constante --, e o valor desse patamar é uma estimativa razoável do número intrínseco de agrupamentos.
+
+\paragraph{Detecção do patamar via derivada discreta.}
+Definimos uma malha $\tau_1 < \tau_2 < \dots < \tau_T$ no intervalo $[\tau_{\min}, \tau_{\max}]$, onde $\tau_{\min}$ e $\tau_{\max}$ são, respectivamente, a menor e a maior distância par-a-par dos dados.
+Como o BSAS depende da ordem dos padrões, repetimos $R$ permutações aleatórias para cada $\tau_t$ e tomamos a \textbf{mediana} de $c(\tau_t)$.
+A derivada discreta
+\begin{equation}
+  \Delta c_t \;=\; \bigl|c(\tau_{t+1}) - c(\tau_t)\bigr|, \qquad t = 1, \dots, T-1,
+\end{equation}
+sinaliza transições.
+Buscamos o \textbf{maior segmento contíguo com $\Delta c_t = 0$} (e $c(\tau) \geq 2$, descartando o patamar trivial $c=1$); o valor de $c$ neste segmento é o $\hat k$ estimado.
+
+\paragraph{Particionamento.}
+Com $\hat k$ em mãos, aplicamos o agrupamento aglomerativo de Ward, que minimiza o aumento de variância intra-cluster a cada fusão. Ward é menos sensível à ordem dos dados que o BSAS e produz partições mais coesas.
+
+\subsection{Algoritmo}
+\begin{algorithm}[H]
+\caption{BSAS clássico (com média incremental dos representantes)}
+\label{alg:bsas}
+\begin{algorithmic}[1]
+\Require Conjunto $\mathcal{D} = \{x_i\}_{i=1}^m$, limiar $\tau$, máximo $q$
+\State $c \gets 0$,\; $\mu_0 \gets x_1$,\; $\mathrm{ind}(1) \gets 0$
+\For{$i = 2, \dots, m$}
+  \State $k \gets \arg\min_{j \in \{0,\dots,c\}} \|x_i - \mu_j\|$
+  \If{$\|x_i - \mu_k\| > \tau$ \textbf{e} $c+1 < q$}
+    \State $c \gets c+1$,\; $\mu_c \gets x_i$,\; $\mathrm{ind}(i) \gets c$
+  \Else
+    \State $\mu_k \gets \mu_k + (x_i - \mu_k)/(\#G_k+1)$
+    \State $\mathrm{ind}(i) \gets k$
+  \EndIf
+\EndFor
+\State \Return $\mathrm{ind}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Resultados}
+A Figura~\ref{fig:bsas_curves} exibe a curva $c(\tau)$ obtida (mediana sobre 15 permutações) e a derivada discreta correspondente para os dois conjuntos.
+Em \emph{Iris}, identifica-se um patamar dominante em $c=2$ (separação de \emph{setosa} contra o restante), resultando em $\hat k = 2$.
+Em \emph{Wine}, o patamar mais longo com $c \geq 2$ ocorre em $c=3$, coincidindo com o número real de classes.
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figs/bsas_curve_iris.pdf}
+    \caption{Iris}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figs/bsas_curve_wine.pdf}
+    \caption{Wine}
+  \end{subfigure}
+  \caption{Mediana de $c(\tau)$ (vermelho) e derivada discreta $|\Delta c/\Delta \tau|$ (azul). A linha tracejada indica o $\hat k$ estimado pelo patamar dominante.}
+  \label{fig:bsas_curves}
+\end{figure}
+
+A Figura~\ref{fig:q1_clusters} mostra os agrupamentos resultantes da pipeline BSAS$\to$Ward sobrepostos à projeção PCA-2D.
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figs/q1_iris_clusters.pdf}
+    \caption{Iris.}
+  \end{subfigure}\\[0.6em]
+  \begin{subfigure}[t]{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figs/q1_wine_clusters.pdf}
+    \caption{Wine.}
+  \end{subfigure}
+  \caption{Comparação entre rótulos verdadeiros (à esquerda) e o agrupamento BSAS$\to$Ward com $\hat k$ estimado (à direita).}
+  \label{fig:q1_clusters}
+\end{figure}
+
+% =========================================================
+\section{Questão 2a -- Janelas de Parzen e \emph{mode-seeking}}
+% =========================================================
+\subsection{Ideia e formulação}
+A estimativa de Parzen com kernel gaussiano isotrópico é
+\begin{equation}
+  \hatp(x) = \frac{1}{m h^n} \sum_{i=1}^{m} \varphi\!\left(\frac{x - x_i}{h}\right),
+  \qquad
+  \varphi(z) = \frac{1}{(2\pi)^{n/2}} \exp\!\left(-\tfrac{1}{2}\,z^\top z\right).
+  \label{eq:parzen}
+\end{equation}
+A largura $h$ controla o trade-off viés-variância: $h$ pequeno gera muitas modas espúrias; $h$ grande coalesce modas reais.
+
+\paragraph{Proposta criativa: \emph{mode-seeking} por \emph{mean-shift}.}
+Em vez de varrer uma grade $n$-dimensional para localizar máximos de $\hatp$ (proibitivo para $n > 3$), partimos cada padrão $x_i$ subindo na densidade pelo gradiente local. O passo de \emph{mean-shift} com kernel gaussiano é
+\begin{equation}
+  x_i^{(t+1)} \;=\; \frac{\sum_{j=1}^m \varphi\!\bigl((x_i^{(t)} - x_j)/h\bigr)\, x_j}{\sum_{j=1}^m \varphi\!\bigl((x_i^{(t)} - x_j)/h\bigr)},
+\end{equation}
+iterado até convergência. Padrões cujas trajetórias terminam na mesma moda (dentro de uma tolerância $\varepsilon = h/2$) são atribuídos ao mesmo agrupamento. O número de agrupamentos é portanto \textbf{emergente}: nunca é informado.
+
+\paragraph{Escolha de $h$.}
+Como heurística inicial usamos a regra de Silverman:
+\begin{equation}
+  h_0 \;=\; \bar{\sigma}\,\left(\frac{4}{(n+2)\,m}\right)^{1/(n+4)},
+  \qquad
+  \bar{\sigma} = \frac{1}{n}\sum_{j=1}^n \sigma_j,
+\end{equation}
+e variamos $h = \alpha \cdot h_0$ com $\alpha \in \{0{,}6;\,0{,}8;\,1{,}0;\,1{,}3;\,1{,}6;\,2{,}0\}$.
+
+\subsection{Resultados}
+A Figura~\ref{fig:parzen_sens} resume a sensibilidade do método à largura $h$ em ambos os datasets.
+Em \emph{Iris}, o número de agrupamentos cai de $K=10$ ($h$ pequeno) a $K=2$ ($h$ grande); o melhor ARI ocorre em $h \approx 0{,}66$, com $K=2$.
+Em \emph{Wine}, $h$ pequeno produz quase tantos agrupamentos quanto pontos -- consequência da \textbf{maldição da dimensionalidade}: em $n=13$, kernels gaussianos isotrópicos perdem massa muito rapidamente. Apenas com $h$ suficientemente grande surgem modas com massa apreciável.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figs/parzen_sensitivity.pdf}
+  \caption{Sensibilidade do número de agrupamentos $K$ (vermelho) e do ARI (azul) à largura $h$ em \emph{Iris} e \emph{Wine}.}
+  \label{fig:parzen_sens}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figs/parzen_iris.pdf}
+    \caption{Iris.}
+  \end{subfigure}\\[0.6em]
+  \begin{subfigure}[t]{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figs/parzen_wine.pdf}
+    \caption{Wine.}
+  \end{subfigure}
+  \caption{À esquerda, superfícies de densidade de Parzen estimadas \emph{na projeção PCA-2D} (apenas para visualização). À direita, agrupamentos obtidos pelo \emph{mean-shift} aplicado ao espaço padronizado original.}
+  \label{fig:parzen}
+\end{figure}
+
+% =========================================================
+\section{Questão 2b -- KNN com vizinhança mútua e densidade adaptativa}
+% =========================================================
+\subsection{Ideia e formulação}
+A estimativa de densidade $k$-NN é \emph{adaptativa}: fixamos o número de vizinhos $k$ e medimos o volume da menor hiperesfera centrada em $x$ que contém esses $k$ vizinhos:
+\begin{equation}
+  \hatp(x) = \frac{k}{m\, V_k(x)}, \qquad V_k(x) = V_0 \,\rho_k(x)^n,
+  \label{eq:knn}
+\end{equation}
+onde $\rho_k(x)$ é a distância ao $k$-ésimo vizinho mais próximo de $x$.
+
+\paragraph{Proposta criativa: mkNN com filtragem por densidade.}
+Combinamos duas ferramentas em um único pipeline:
+\begin{enumerate}[leftmargin=1.7em]
+\item \textbf{Grafo de $k$-vizinhos mútuos (mkNN).} Há aresta entre $x_i$ e $x_j$ \emph{se e somente se} cada um aparece na lista dos $k$ vizinhos mais próximos do outro.
+A vizinhança mútua suprime ``pontes'' espúrias entre clusters distintos que um grafo $k$-NN dirigido criaria.
+\item \textbf{Filtragem por densidade local.} Usando \eqref{eq:knn}, classificamos como \emph{ruído} todos os padrões com densidade abaixo do percentil $p_{\text{low}} = 10\%$; eles são removidos do grafo antes da extração de componentes conexos e reatribuídos \emph{a posteriori} ao cluster do vizinho não-ruído mais próximo.
+\end{enumerate}
+O número de clusters \textbf{emerge} dos componentes conexos do grafo restrito aos pontos de densidade suficiente.
+
+\paragraph{Escolha de $k$.}
+A heurística clássica $k \approx \sqrt{m}$ produz $k \approx 12$ para \emph{Iris} e $k \approx 13$ para \emph{Wine}. Variamos $k \in \{5, 7, 10, 15, 20, 30\}$ para estudar sensibilidade. Após a varredura, escolhemos o $k$ que maximiza ARI -- métrica que penaliza tanto fragmentação quanto fusão excessiva.
+
+\subsection{Resultados}
+A Figura~\ref{fig:knn} exibe a densidade $k$-NN estimada em PCA-2D e os agrupamentos finais.
+Em \emph{Iris}, o melhor $k$ foi $10$, produzindo $K=2$ componentes que correspondem essencialmente a \emph{setosa} \emph{vs.}\ \emph{versicolor+virginica}. Em \emph{Wine}, a melhor configuração foi $k=5$ com $K=4$ componentes; valores maiores de $k$ saturam o grafo, fundindo todas as classes em um único componente conexo.
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figs/knn_iris.pdf}
+    \caption{Iris.}
+  \end{subfigure}\\[0.6em]
+  \begin{subfigure}[t]{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figs/knn_wine.pdf}
+    \caption{Wine.}
+  \end{subfigure}
+  \caption{À esquerda, densidade $k$-NN estimada (cor); à direita, agrupamento por componentes conexos do grafo mkNN, com filtragem de pontos de baixa densidade.}
+  \label{fig:knn}
+\end{figure}
+
+% =========================================================
+\section{Comparação geral}
+% =========================================================
+A Tabela~\ref{tab:results} consolida as métricas qualitativas para os três métodos em ambos os datasets.
+Avaliamos: $K$ (número de clusters preditos), \emph{acc*} (acurácia após alinhamento ótimo dos rótulos via algoritmo Hungarian), ARI (\emph{Adjusted Rand Index}) e NMI (\emph{Normalized Mutual Information}).
+Os índices ARI e NMI independem da permutação dos rótulos.
+
+\begin{table}[H]
+  \centering
+  \caption{Resumo qualitativo dos agrupamentos obtidos. \emph{acc*} usa alinhamento ótimo de rótulos.}
+  \label{tab:results}
+  \begin{tabular}{llcccc}
+    \toprule
+    Dataset & Método             & $K$ & \emph{acc*} & ARI   & NMI   \\
+    \midrule
+    \multirow{3}{*}{\emph{Iris}}
+            & BSAS$\to$Ward      & 2   & 0,660       & 0,544 & 0,692 \\
+            & Parzen mode-seek   & 2   & 0,667       & 0,568 & 0,734 \\
+            & KNN  mkNN+densid.  & 2   & 0,667       & 0,568 & 0,734 \\
+    \midrule
+    \multirow{3}{*}{\emph{Wine}}
+            & BSAS$\to$Ward      & 3   & \textbf{0,927} & \textbf{0,790} & \textbf{0,786} \\
+            & Parzen mode-seek   & 12  & 0,899       & 0,781 & 0,752 \\
+            & KNN  mkNN+densid.  & 4   & 0,904       & 0,761 & 0,762 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+A Figura~\ref{fig:cm} apresenta as matrizes de confusão correspondentes (já alinhadas pelo Hungarian).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figs/cm_iris.pdf}\\[0.4em]
+  \includegraphics[width=\textwidth]{figs/cm_wine.pdf}
+  \caption{Matrizes de confusão (linhas: classe verdadeira; colunas: cluster predito após alinhamento) para os três métodos em \emph{Iris} (acima) e \emph{Wine} (abaixo).}
+  \label{fig:cm}
+\end{figure}
+
+% =========================================================
+\section{Discussão crítica}
+% =========================================================
+\subsection{BSAS combinado com Ward}
+A combinação se mostrou eficaz em \emph{Wine}, no qual o patamar em $c=3$ é claro e Ward, após padronização, recupera as três classes com 92{,}7\% de acurácia. Em \emph{Iris}, contudo, o patamar mais longo ocorre em $c=2$: a separação entre \emph{setosa} e o restante é tão evidente que domina a curva.
+Essa observação reflete uma limitação \textbf{semântica}: o número de agrupamentos ``naturalmente'' presente nos dados pode não coincidir com o número de classes de interesse para o problema. Heurísticas alternativas (e.g., usar o \emph{segundo} patamar mais longo ou exigir $c \geq c_{\min}$) corrigem isso quando há informação prévia sobre $K$.
+A \textbf{sensibilidade à ordem} do BSAS foi mitigada com a mediana sobre 15 permutações, mas o método permanece menos robusto que abordagens hierárquicas para o particionamento final, motivando a escolha de Ward.
+
+\subsection{Parzen com \emph{mode-seeking}}
+A grande vantagem é dispensar a especificação de $K$: ele emerge da topologia da densidade.
+A grande limitação é a \textbf{forte dependência de $h$} (Figura~\ref{fig:parzen_sens}). Em \emph{Wine} ($n=13$), kernels gaussianos isotrópicos sofrem com a maldição da dimensionalidade: a regra de Silverman subestima a largura ideal e $h_0 = 0{,}68$ produz $K=114$. Apenas em $\alpha \geq 1{,}3$ a estimativa começa a ter modas com massa apreciável, e o número de agrupamentos só atinge valores razoáveis em $\alpha = 2{,}0$. A acurácia final, no entanto, é alta após o alinhamento -- evidência de que os 12 modos encontrados em $\alpha = 1{,}6$ são \emph{sub-clusters} corretamente nidificados nas três classes.
+Custo computacional: $\mathcal{O}(T \cdot m^2 \cdot n)$ por iteração de \emph{mean-shift}, viável para datasets pequenos como os deste trabalho.
+
+\subsection{KNN mkNN com densidade}
+A vantagem do KNN é a \textbf{adaptatividade}: a largura local muda conforme a densidade. O grafo mkNN reduz pontes entre clusters densos. Em \emph{Iris}, o método encontra naturalmente $K=2$, refletindo a estrutura bimodal real dos dados padronizados. Em \emph{Wine}, é \textbf{altamente sensível a $k$}: $k=5$ funciona bem, mas $k \geq 7$ satura o grafo e tudo vira um único componente.
+Esse comportamento é intrínseco a métodos baseados em conectividade: para datasets em que classes se tocam densamente (como \emph{Wine} no espaço padronizado), uma única ``ponte'' robusta é suficiente para fundir clusters semânticos distintos. O filtro por percentil ajuda, mas adiciona um hiperparâmetro a ser ajustado. Aprimoramentos possíveis incluem: ponderação das arestas pela densidade local, uso de cortes mínimos no grafo, ou substituir componentes conexos por um critério de modularidade.
+
+\subsection{Considerações finais}
+Nenhum método domina simultaneamente os dois datasets, o que reforça o princípio de que a \emph{escolha do algoritmo é parte do problema}.
+A combinação BSAS$\to$Ward forneceu o melhor desempenho em \emph{Wine}, em que classes ficam aproximadamente esféricas após padronização. As abordagens baseadas em densidade (Parzen e KNN) capturaram melhor a bimodalidade clara de \emph{Iris}, ao custo de não recuperar as três classes semânticas.
+Em uma aplicação real, recomendamos o uso \emph{combinado}: o BSAS oferece uma estimativa rápida de $\hat K$, enquanto Parzen e KNN servem como diagnóstico topológico (modas, regiões de baixa densidade, candidatos a outliers).
+Esses três pontos de vista, complementares, fornecem um retrato mais rico da estrutura dos dados que qualquer método isoladamente.
+
+\end{document}
