@@ -1,0 +1,599 @@
+\documentclass[12pt, a4paper]{article}
+
+%% Pacotes
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage[top=2.5cm, bottom=2.5cm, left=3cm, right=2.5cm]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{enumitem}
+\usepackage{indentfirst}
+
+%% Configurações gerais
+\onehalfspacing
+\setlength{\parindent}{1.25cm}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=blue
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\small Reconhecimento de Padrões Computacional -- UNESP}
+\lhead{\small Atividade: Redução de Dimensionalidade, Classificação e Agrupamento}
+\rfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+%% Macros matemáticas
+\newcommand{\bx}{\mathbf{x}}
+\newcommand{\bmu}{\boldsymbol{\mu}}
+\newcommand{\bSigma}{\boldsymbol{\Sigma}}
+\newcommand{\bW}{\mathbf{W}}
+\newcommand{\bG}{\mathbf{G}}
+\newcommand{\bY}{\mathbf{Y}}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+
+%% Ambiente para resultados a preencher
+\newcommand{\placeholder}[1]{\textcolor{gray}{\textit{#1}}}
+
+% ===================================================================
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{1.5cm}
+    {\large \textbf{Universidade Estadual Paulista ``Júlio de Mesquita Filho''}} \\
+    \vspace{0.3cm}
+    {\large Instituto de Ciência e Tecnologia -- São José dos Campos} \\
+    \vspace{0.3cm}
+    {\large Programa de Pós-Graduação} \\[2cm]
+
+    \rule{\textwidth}{1pt} \\[0.5cm]
+    {\LARGE \textbf{Redução de Dimensionalidade, Classificação e Agrupamento}} \\[0.3cm]
+    {\large Atividade Prática -- Reconhecimento de Padrões Computacional} \\[0.3cm]
+    \rule{\textwidth}{1pt} \\[2.5cm]
+
+    \begin{flushleft}
+        \textbf{Aluno:} \underline{\hspace{8cm}} \\[0.5cm]
+        \textbf{Matrícula:} \underline{\hspace{6cm}} \\[0.5cm]
+        \textbf{Professor:} Prof.\ Dr.\ Rogério Galante Negri \\[0.5cm]
+        \textbf{Disciplina:} Reconhecimento de Padrões Computacional (CLPR) \\[0.5cm]
+        \textbf{Data:} \today
+    \end{flushleft}
+
+    \vfill
+    {\large São José dos Campos -- SP, 2026}
+\end{titlepage}
+
+% ===================================================================
+\tableofcontents
+\newpage
+
+% ===================================================================
+\section{Introdução}
+\label{sec:intro}
+
+O Reconhecimento de Padrões (RP) é um campo interdisciplinar que visa extrair informação estruturada a partir de dados brutos~\cite{negri2021}. Em problemas do mundo real, os dados frequentemente apresentam alta dimensionalidade, o que impõe desafios tanto computacionais quanto estatísticos -- fenômeno amplamente conhecido como a \emph{maldição da dimensionalidade}~\cite{bishop2006}.
+
+Esta atividade explora três grandes eixos do RP aplicados a dois conjuntos de dados de características distintas:
+
+\begin{enumerate}[label=(\roman*)]
+    \item \textbf{Redução de dimensionalidade:} empregando Análise de Componentes Principais (PCA, \emph{Principal Component Analysis}) e Seleção Sequencial Flutuante Progressiva (SFFS, \emph{Sequential Floating Forward Selection});
+    \item \textbf{Classificação supervisionada:} com quatro métodos de complexidades e paradigmas diferentes;
+    \item \textbf{Agrupamento não supervisionado:} com quatro métodos que cobrem abordagens sequenciais, fuzzy, probabilísticas e hierárquicas.
+\end{enumerate}
+
+O objetivo é analisar o impacto da redução dimensional no desempenho dos classificadores e comparar a capacidade de descoberta de estrutura latente nos dados pelos diferentes algoritmos de agrupamento.
+
+% ===================================================================
+\section{Conjuntos de Dados}
+\label{sec:dados}
+
+\subsection{Dados Artificiais (30 dimensões)}
+
+O primeiro conjunto foi gerado com a função \texttt{make\_classification} do Scikit-learn com os seguintes parâmetros:
+
+\begin{itemize}
+    \item $N = 600$ amostras, $d = 30$ atributos, $c = 4$ classes balanceadas ($150$ amostras/classe);
+    \item $10$ atributos informativos, $10$ redundantes (combinações lineares dos informativos), $5$ repetidos e $5$ puramente ruidosos;
+    \item Semente aleatória: $42$.
+\end{itemize}
+
+A presença deliberada de redundância e ruído torna este conjunto adequado para avaliar técnicas de redução de dimensionalidade. A separação treino/avaliação seguiu a proporção $67\%/33\%$ (estratificada).
+
+\subsection{Faces Olivetti}
+
+O segundo conjunto é o \emph{Olivetti Faces Dataset}~\cite{samaria1994}, disponível no Scikit-learn:
+
+\begin{itemize}
+    \item $N = 400$ imagens, $d = 4096$ atributos (imagens $64 \times 64$ pixels em escala de cinza);
+    \item $c = 40$ sujeitos distintos, $10$ imagens por sujeito (variações de iluminação, expressão e pose);
+    \item Separação treino/avaliação: $67\%/33\%$ (estratificada).
+\end{itemize}
+
+A dimensionalidade extrema ($4096$) e o número elevado de classes ($40$) fazem deste conjunto um desafio representativo de aplicações reais de reconhecimento facial. Antes do processamento, os dados foram normalizados com \texttt{StandardScaler} ($\mu=0$, $\sigma^2=1$ por atributo).
+
+% ===================================================================
+\section{Redução de Dimensionalidade}
+\label{sec:reducao}
+
+\subsection{Análise de Componentes Principais (PCA)}
+\label{sec:pca}
+
+PCA é uma técnica linear não supervisionada que projeta os dados em um subespaço de menor dimensão, definido pelos autovetores da matriz de covariância associados aos maiores autovalores~\cite{bishop2006}. A projeção de uma amostra $\bx \in \mathbb{R}^d$ para o subespaço de $p$ componentes é:
+
+\begin{equation}
+    \bx' = \bW_p^T (\bx - \hat{\bmu}),
+    \label{eq:pca}
+\end{equation}
+
+\noindent onde $\hat{\bmu}$ é a média empírica do conjunto de treino e $\bW_p = [\mathbf{w}_1, \ldots, \mathbf{w}_p] \in \mathbb{R}^{d \times p}$ contém os $p$ autovetores (componentes principais) ordenados de forma decrescente por autovalor.
+
+O número de componentes $p$ é determinado automaticamente pelo critério de variância explicada acumulada:
+
+\begin{equation}
+    p = \min \left\{ k : \frac{\sum_{i=1}^{k} \lambda_i}{\sum_{i=1}^{d} \lambda_i} \geq 0{,}95 \right\},
+    \label{eq:pca_var}
+\end{equation}
+
+\noindent onde $\lambda_i$ são os autovalores em ordem decrescente. O limiar de $95\%$ garante que a maior parte da variância seja preservada com redução substancial de dimensões.
+
+\textbf{Importante:} $\hat{\bmu}$ e $\bW_p$ são estimados exclusivamente com os dados de treino e aplicados ao conjunto de avaliação, evitando vazamento de informação (\emph{data leakage}).
+
+\subsection{Seleção Sequencial Flutuante Progressiva (SFFS)}
+\label{sec:sffs}
+
+SFFS é uma técnica supervisionada de seleção de atributos que alterna passos de adição (\emph{forward}) e remoção (\emph{backward}) de atributos em um subconjunto selecionado~\cite{theodoridis2008}. O critério de qualidade adotado é baseado nas matrizes de espalhamento inter e intraclasse:
+
+\begin{equation}
+    J(\Xi) = \frac{|\mathbf{V}_e + \mathbf{V}_i|}{|\mathbf{V}_i|},
+    \label{eq:sffs_J}
+\end{equation}
+
+\noindent onde $\mathbf{V}_e$ é a matriz de espalhamento interclasse (\emph{between-class scatter}) e $\mathbf{V}_i$ é a matriz de espalhamento intraclasse (\emph{within-class scatter}):
+
+\begin{align}
+    \mathbf{V}_e &= \sum_{k=1}^{c} n_k (\hat{\bmu}_k - \hat{\bmu})(\hat{\bmu}_k - \hat{\bmu})^T, \label{eq:Ve} \\
+    \mathbf{V}_i &= \sum_{k=1}^{c} \sum_{\bx \in \omega_k} (\bx - \hat{\bmu}_k)(\bx - \hat{\bmu}_k)^T. \label{eq:Vi}
+\end{align}
+
+Quanto maior $J(\Xi)$, maior a separabilidade entre classes em relação à compactação intraclasse. O Algoritmo~\ref{alg:sffs} descreve o procedimento completo.
+
+\begin{algorithm}[H]
+\caption{Sequential Floating Forward Selection (SFFS)}
+\label{alg:sffs}
+\begin{algorithmic}[1]
+\Require Conjunto de atributos candidatos $\mathcal{F}$, número de atributos a selecionar $n_s$
+\Ensure Subconjunto ótimo $\Xi^*$
+\State $\Xi \leftarrow \emptyset$
+\While{$|\Xi| < n_s$}
+    \State \textbf{Passo Forward:} $\xi^+ \leftarrow \arg\max_{\xi \in \mathcal{F} \setminus \Xi} J(\Xi \cup \{\xi\})$
+    \State $\Xi \leftarrow \Xi \cup \{\xi^+\}$
+    \State \textbf{Passo Backward (floating):}
+    \While{$|\Xi| > 1$}
+        \State $\xi^- \leftarrow \arg\max_{\xi \in \Xi} J(\Xi \setminus \{\xi\})$
+        \If{$J(\Xi \setminus \{\xi^-\}) > J(\Xi \setminus \{\xi^-\})_{\text{anterior}}$}
+            \State $\Xi \leftarrow \Xi \setminus \{\xi^-\}$
+        \Else
+            \State \textbf{break}
+        \EndIf
+    \EndWhile
+\EndWhile
+\State \Return $\Xi$
+\end{algorithmic}
+\end{algorithm}
+
+No caso do conjunto Olivetti Faces (4096 dimensões), o SFFS é aplicado sobre as componentes PCA (e não nos atributos originais), pois a avaliação do critério $J$ em espaço de 4096 dimensões é computacionalmente inviável.
+
+\subsection{Resultados da Redução de Dimensionalidade}
+\label{sec:res_reducao}
+
+A Tabela~\ref{tab:reducao} apresenta o número de dimensões antes e após cada método de redução.
+
+\begin{table}[H]
+    \centering
+    \caption{Dimensões resultantes após PCA e SFFS.}
+    \label{tab:reducao}
+    \begin{tabular}{lccc}
+        \toprule
+        \textbf{Dataset} & \textbf{Original} & \textbf{PCA (95\%)} & \textbf{SFFS} \\
+        \midrule
+        Artificial       & 30     & \placeholder{--}  & \placeholder{--} \\
+        Olivetti Faces   & 4096   & \placeholder{--}  & \placeholder{--} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \fbox{\parbox{0.45\textwidth}{\centering\vspace{3cm}
+        \textit{Variância explicada acumulada -- Artificial}
+        \vspace{3cm}}}
+    \hfill
+    \fbox{\parbox{0.45\textwidth}{\centering\vspace{3cm}
+        \textit{Variância explicada acumulada -- Olivetti}
+        \vspace{3cm}}}
+    \caption{Variância explicada acumulada pelas componentes PCA. A linha tracejada indica o limiar de 95\%.}
+    \label{fig:pca_var}
+\end{figure}
+
+% ===================================================================
+\section{Classificação Supervisionada}
+\label{sec:classificacao}
+
+Quatro métodos de classificação foram aplicados a cada configuração de dados (original, PCA e SFFS). Os classificadores foram treinados exclusivamente com os dados de treino e avaliados no conjunto de avaliação.
+
+\subsection{Rede RBF com Mapeamento Polinomial e Saída SSE (Atividade III)}
+\label{sec:polyrbf}
+
+Este classificador combina três estágios em sequência~\cite{negri2021}:
+
+\textbf{Estágio 1 -- Mapeamento Polinomial:} o vetor de entrada $\bx \in \mathbb{R}^d$ é expandido para o espaço de características polinomiais de grau $q=2$:
+\begin{equation}
+    \bx \mapsto \boldsymbol{\phi}(\bx) = [1,\; x_1,\; x_2,\; \ldots,\; x_d,\; x_1^2,\; x_1 x_2,\; \ldots,\; x_d^2]^T \in \mathbb{R}^{d'},
+    \label{eq:poly}
+\end{equation}
+com $d' = \binom{d+q}{q}$. Para $d=30$ e $q=2$, obtém-se $d' = 496$ features expandidas.
+
+\textbf{Estágio 2 -- Camada Oculta RBF:} os centróides $\{\bmu_j\}_{j=1}^{K}$ são estimados via K-Means no espaço polinomial. A ativação de cada neurônio oculto é:
+\begin{equation}
+    g_j(\bx) = \exp\!\left(-\frac{\norm{\boldsymbol{\phi}(\bx) - \bmu_j}^2}{2\sigma_j^2}\right), \quad j = 1, \ldots, K,
+    \label{eq:rbf_act}
+\end{equation}
+com $\sigma_j^2$ estimado como a distância média ao centróide mais próximo.
+
+\textbf{Estágio 3 -- Saída SSE Linear:} os pesos da camada de saída são obtidos analiticamente pela solução de mínimos quadrados~\cite{negri2021}:
+\begin{equation}
+    \bW = (\bG^T \bG)^{-1} \bG^T \bY,
+    \label{eq:sse}
+\end{equation}
+onde $\bG \in \mathbb{R}^{N \times K}$ é a matriz de ativações da camada oculta e $\bY \in \mathbb{R}^{N \times c}$ é a codificação \emph{one-hot} dos rótulos. A classe predita é $\hat{y} = \arg\max_k [\bG \bW]_k$.
+
+\subsection{Neurônios Aleatórios -- ELM (Atividade IV)}
+\label{sec:elm}
+
+O método de Neurônios Aleatórios (Extreme Learning Machine, ELM) é uma variante da Rede RBF onde os centróides $\bmu_j$ são amostrados aleatoriamente do conjunto de treino, sem a fase de K-Means~\cite{negri2021}. Os parâmetros da camada oculta são \emph{fixos}, e apenas os pesos de saída $\bW$ são aprendidos, também pela Equação~\eqref{eq:sse}:
+\begin{equation}
+    \bmu_j \sim \text{Uniforme}(\{\bx_1, \ldots, \bx_N\}), \quad j = 1, \ldots, K.
+    \label{eq:elm_centers}
+\end{equation}
+
+O desvio padrão da função de ativação é estimado por:
+\begin{equation}
+    \sigma = \hat{\sigma}(\bX) \cdot \sqrt{\frac{d}{K}},
+    \label{eq:elm_sigma}
+\end{equation}
+onde $\hat{\sigma}(\bX)$ é o desvio padrão global dos dados de treino e $K$ é o número de neurônios ocultos.
+
+A principal vantagem do ELM sobre a RBFNet é o custo computacional reduzido pela eliminação do K-Means. A principal desvantagem é a maior variância dos resultados, pois os centróides não são otimizados para a distribuição dos dados.
+
+\subsection{SVM com Kernel RBF}
+\label{sec:svm}
+
+A SVM (\emph{Support Vector Machine}) busca o hiperplano de máxima margem no espaço de características induzido pelo kernel~\cite{bishop2006}. O kernel Gaussiano (RBF) é definido por:
+\begin{equation}
+    K(\bx_i, \bx_j) = \exp(-\gamma \norm{\bx_i - \bx_j}^2),
+    \label{eq:kernel_rbf}
+\end{equation}
+com $\gamma = $ \texttt{scale} (i.e., $\gamma = 1/(d \cdot \text{Var}(\bX))$) e penalidade $C = 10$. Para problemas multiclasse ($c > 2$), adota-se a estratégia \emph{One-vs-Rest} (OVR), treinando $c$ SVMs binárias.
+
+\subsection{K-Vizinhos Mais Próximos (KNN)}
+\label{sec:knn}
+
+O KNN é um classificador não-paramétrico e baseado em instâncias. A classe de uma amostra $\bx$ é determinada por votação majoritária entre seus $k$ vizinhos mais próximos (distância Euclidiana) no conjunto de treino:
+\begin{equation}
+    \hat{y}(\bx) = \arg\max_{\omega_j} \sum_{i \in \mathcal{N}_k(\bx)} \mathbf{1}[y_i = \omega_j],
+    \label{eq:knn}
+\end{equation}
+onde $\mathcal{N}_k(\bx)$ é o conjunto dos $k$ vizinhos mais próximos. Nesta atividade, $k = 5$.
+
+\subsection{Métricas de Avaliação para Classificação}
+\label{sec:metricas_class}
+
+\textbf{Acerto Global (OA):}
+\begin{equation}
+    A_g = \frac{1}{m} \sum_{i=1}^{c} a_{ii},
+    \label{eq:oa}
+\end{equation}
+onde $m$ é o total de amostras avaliadas e $a_{ii}$ são os elementos da diagonal principal da matriz de confusão.
+
+\textbf{Coeficiente Kappa:}
+\begin{equation}
+    \kappa = \frac{A_g - A_a}{1 - A_a}, \quad A_a = \frac{1}{m^2} \sum_{i=1}^{c} \left(\sum_j a_{ij}\right)\!\left(\sum_j a_{ji}\right),
+    \label{eq:kappa}
+\end{equation}
+onde $A_a$ representa o acerto esperado por acaso. $\kappa \in [0,1]$ com $\kappa = 1$ indicando concordância perfeita e $\kappa = 0$ indicando concordância aleatória~\cite{negri2021}.
+
+\subsection{Resultados de Classificação}
+\label{sec:res_class}
+
+As Tabelas~\ref{tab:class_artificial} e \ref{tab:class_olivetti} apresentam os resultados (OA e $\kappa$) para os quatro classificadores, nas três configurações de espaço de atributos.
+
+\begin{table}[H]
+    \centering
+    \caption{Classificação -- Dataset Artificial (30D). OA: Acerto Global; $\kappa$: Coeficiente Kappa.}
+    \label{tab:class_artificial}
+    \setlength{\tabcolsep}{5pt}
+    \begin{tabular}{lcccccc}
+        \toprule
+        \multirow{2}{*}{\textbf{Método}} &
+        \multicolumn{2}{c}{\textbf{Original (30D)}} &
+        \multicolumn{2}{c}{\textbf{PCA}} &
+        \multicolumn{2}{c}{\textbf{SFFS}} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
+        & OA & $\kappa$ & OA & $\kappa$ & OA & $\kappa$ \\
+        \midrule
+        PolyMap-RBFNet-SSE & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        Random Neurons (ELM) & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        SVM-RBF ($C=10$)  & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        KNN ($k=5$)        & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Classificação -- Olivetti Faces (4096D). OA: Acerto Global; $\kappa$: Coeficiente Kappa.}
+    \label{tab:class_olivetti}
+    \setlength{\tabcolsep}{5pt}
+    \begin{tabular}{lcccccc}
+        \toprule
+        \multirow{2}{*}{\textbf{Método}} &
+        \multicolumn{2}{c}{\textbf{Original}} &
+        \multicolumn{2}{c}{\textbf{PCA}} &
+        \multicolumn{2}{c}{\textbf{SFFS (sobre PCA)}} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
+        & OA & $\kappa$ & OA & $\kappa$ & OA & $\kappa$ \\
+        \midrule
+        PolyMap-RBFNet-SSE & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        Random Neurons (ELM) & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        SVM-RBF ($C=10$)  & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        KNN ($k=5$)        & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \fbox{\parbox{0.45\textwidth}{\centering\vspace{3cm}
+        \textit{Matriz de confusão -- melhor classificador, Dataset Artificial}
+        \vspace{3cm}}}
+    \hfill
+    \fbox{\parbox{0.45\textwidth}{\centering\vspace{3cm}
+        \textit{Matriz de confusão -- melhor classificador, Olivetti}
+        \vspace{3cm}}}
+    \caption{Matrizes de confusão do melhor classificador em cada dataset.}
+    \label{fig:matconf}
+\end{figure}
+
+% ===================================================================
+\section{Agrupamento Não Supervisionado}
+\label{sec:agrupamento}
+
+O agrupamento foi aplicado aos dados sem utilizar os rótulos durante o treinamento. Quatro métodos foram comparados, dois deles obrigatórios da Atividade V.
+
+\subsection{BSAS -- Basic Sequential Algorithmic Scheme (Atividade V)}
+\label{sec:bsas}
+
+O BSAS é um algoritmo de agrupamento sequencial que processa cada amostra uma única vez~\cite{theodoridis2008}. Um novo cluster é criado sempre que a distância mínima a todos os clusters existentes supera um limiar $\Theta$:
+
+\begin{algorithm}[H]
+\caption{Basic Sequential Algorithmic Scheme (BSAS)}
+\label{alg:bsas}
+\begin{algorithmic}[1]
+\Require Dados $\{\bx_1, \ldots, \bx_N\}$, limiar $\Theta$, máximo de clusters $c_{\max}$
+\State $m \leftarrow 1$; $C_1 \leftarrow \{\bx_1\}$; $\bmu_1 \leftarrow \bx_1$
+\For{$i = 2$ to $N$}
+    \State $k^* \leftarrow \arg\min_{k \in \{1,\ldots,m\}} d(\bx_i, \bmu_k)$
+    \If{$d(\bx_i, \bmu_{k^*}) > \Theta$ \textbf{and} $m < c_{\max}$}
+        \State $m \leftarrow m + 1$; $C_m \leftarrow \{\bx_i\}$; $\bmu_m \leftarrow \bx_i$
+    \Else
+        \State $C_{k^*} \leftarrow C_{k^*} \cup \{\bx_i\}$
+        \State $\bmu_{k^*} \leftarrow \frac{(n_{k^*}-1)\,\bmu_{k^*} + \bx_i}{n_{k^*}}$ \Comment{Atualização incremental}
+    \EndIf
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+A atualização incremental do centróide mantém a complexidade linear em memória. O BSAS é sensível à ordem dos dados e ao valor de $\Theta$, que deve ser ajustado com base nas distâncias do conjunto.
+
+\subsection{Fuzzy K-Means -- FKM (Atividade V)}
+\label{sec:fkm}
+
+O FKM (ou FCM -- \emph{Fuzzy C-Means}) estende o K-Means para graus de pertinência contínuos~\cite{theodoridis2008}. A função objetivo é:
+\begin{equation}
+    J_{\text{FKM}} = \sum_{i=1}^{N} \sum_{k=1}^{c} \lambda_{ik}^\beta \norm{\bx_i - \bmu_k}^2,
+    \label{eq:fkm_obj}
+\end{equation}
+onde $\lambda_{ik} \in [0,1]$ é o grau de pertinência da amostra $i$ ao cluster $k$, e $\beta > 1$ é o parâmetro de fuzzificação (aqui, $\beta = 2$).
+
+As atualizações iterativas são:
+\begin{align}
+    \lambda_{ik} &= \left[\sum_{j=1}^{c} \left(\frac{\norm{\bx_i - \bmu_k}}{\norm{\bx_i - \bmu_j}}\right)^{\!\frac{2}{\beta-1}}\right]^{-1}, \label{eq:fkm_lambda} \\
+    \bmu_k &= \frac{\sum_{i=1}^{N} \lambda_{ik}^\beta \bx_i}{\sum_{i=1}^{N} \lambda_{ik}^\beta}. \label{eq:fkm_mu}
+\end{align}
+
+O algoritmo converge quando $\max_{i,k} |\lambda_{ik}^{(t+1)} - \lambda_{ik}^{(t)}| < \varepsilon$, com $\varepsilon = 10^{-4}$.
+
+\subsection{K-Means}
+\label{sec:kmeans}
+
+O K-Means minimiza a variância intraclasse:
+\begin{equation}
+    J_{\text{KM}} = \sum_{k=1}^{c} \sum_{\bx \in C_k} \norm{\bx - \bmu_k}^2.
+    \label{eq:kmeans_obj}
+\end{equation}
+
+Utilizou-se a implementação do Scikit-learn com $n\_\text{init} = 10$ reinicializações aleatórias e critério \texttt{k-means++} para inicialização dos centróides.
+
+\subsection{Agrupamento Hierárquico -- Ward}
+\label{sec:ward}
+
+O agrupamento hierárquico aglomerativo com ligação de Ward funde iterativamente os dois clusters cuja fusão minimiza o aumento da variância intraclasse~\cite{bishop2006}:
+\begin{equation}
+    \Delta(C_a, C_b) = \frac{n_a n_b}{n_a + n_b} \norm{\bmu_a - \bmu_b}^2,
+    \label{eq:ward}
+\end{equation}
+onde $n_a$, $n_b$ são os tamanhos e $\bmu_a$, $\bmu_b$ os centróides dos clusters mesclados.
+
+\subsection{Métricas de Avaliação para Agrupamento}
+\label{sec:metricas_cluster}
+
+\textbf{Silhouette Coefficient (SC):}
+\begin{equation}
+    s(i) = \frac{b(i) - a(i)}{\max\{a(i),\, b(i)\}},
+    \label{eq:silhouette}
+\end{equation}
+onde $a(i)$ é a distância média intracluster e $b(i)$ é a menor distância média para os demais clusters. $SC = (1/N)\sum_i s(i) \in [-1, 1]$.
+
+\textbf{Índice Calinski-Harabász (CHI):}
+\begin{equation}
+    \text{CHI} = \frac{\text{tr}(\mathbf{V}_e)}{\text{tr}(\mathbf{V}_i)} \cdot \frac{N - c}{c - 1}.
+    \label{eq:chi}
+\end{equation}
+Valores maiores indicam clusters mais compactos e bem separados.
+
+\textbf{V-measure} (requer rótulos de referência):
+\begin{equation}
+    V = \frac{2 \cdot H_c \cdot C_c}{H_c + C_c},
+    \label{eq:vmeasure}
+\end{equation}
+onde $H_c$ é a homogeneidade (cada cluster contém apenas membros de uma classe) e $C_c$ é a completude (todos os membros de uma classe estão no mesmo cluster).
+
+\subsection{Resultados de Agrupamento}
+\label{sec:res_cluster}
+
+\begin{table}[H]
+    \centering
+    \caption{Agrupamento -- Dataset Artificial ($c=4$ clusters). SC: Silhouette; CHI: Calinski-Harabász; V: V-measure.}
+    \label{tab:cluster_artificial}
+    \begin{tabular}{lcccc}
+        \toprule
+        \textbf{Método} & \textbf{$k$} & \textbf{SC} & \textbf{CHI} & \textbf{V-measure} \\
+        \midrule
+        BSAS             & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        Fuzzy K-Means    & 4                & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        K-Means          & 4                & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        Ward Hierárquico & 4                & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Agrupamento -- Olivetti Faces ($c=10$ clusters). SC: Silhouette; CHI: Calinski-Harabász; V: V-measure (em relação aos 40 rótulos verdadeiros).}
+    \label{tab:cluster_olivetti}
+    \begin{tabular}{lcccc}
+        \toprule
+        \textbf{Método} & \textbf{$k$} & \textbf{SC} & \textbf{CHI} & \textbf{V-measure} \\
+        \midrule
+        BSAS             & \placeholder{--} & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        Fuzzy K-Means    & 10               & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        K-Means          & 10               & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        Ward Hierárquico & 10               & \placeholder{--} & \placeholder{--} & \placeholder{--} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \fbox{\parbox{0.45\textwidth}{\centering\vspace{3cm}
+        \textit{Dendrograma (Ward) -- Dataset Artificial}
+        \vspace{3cm}}}
+    \hfill
+    \fbox{\parbox{0.45\textwidth}{\centering\vspace{3cm}
+        \textit{Projeção 2D PCA com rótulos de agrupamento -- Olivetti}
+        \vspace{3cm}}}
+    \caption{Visualizações dos resultados de agrupamento.}
+    \label{fig:cluster_vis}
+\end{figure}
+
+% ===================================================================
+\section{Discussão}
+\label{sec:discussao}
+
+\subsection{Impacto da Maldição da Dimensionalidade}
+
+O dataset Olivetti Faces, com $d = 4096$ atributos e apenas $N = 400$ amostras, representa um regime em que $d \gg N$. Neste regime, a distância Euclidiana perde poder discriminativo~\cite{bishop2006}: a razão $d_{\max}/d_{\min}$ (distância máxima sobre mínima entre pares) tende a $1$ à medida que $d \to \infty$, tornando o espaço praticamente equidistante. Isso afeta especialmente o KNN e o BSAS, que dependem fortemente de distâncias no espaço original.
+
+O PCA mitiga este problema ao projetar os dados em um subespaço de menor dimensão que concentra a maior parte da variância. \placeholder{Discutir aqui, com base nos resultados obtidos, o ganho de desempenho após PCA.}
+
+\subsection{PCA \textit{vs.}\ SFFS: Extração \textit{vs.}\ Seleção}
+
+PCA é uma técnica de \emph{extração} de características: as novas variáveis (componentes principais) são combinações lineares de todas as originais, sem interpretabilidade direta. Por outro lado, o SFFS realiza \emph{seleção} de atributos: retém um subconjunto das variáveis originais (ou das componentes PCA, neste caso), preservando a interpretabilidade.
+
+A vantagem do SFFS está em seu critério supervisionado: o critério $J$ (Equação~\ref{eq:sffs_J}) avalia explicitamente a discriminabilidade entre classes, enquanto o PCA é insensível aos rótulos. Isso pode fazer o SFFS encontrar subconjuntos mais relevantes para classificação em cenários específicos.
+
+\placeholder{Discutir aqui os atributos/componentes selecionados pelo SFFS em cada dataset e compará-los com os componentes PCA retidos.}
+
+\subsection{Classificação: RBFNet \textit{vs.}\ ELM}
+
+A diferença fundamental entre o PolyMap-RBFNet-SSE e o Random Neurons (ELM) é a forma de determinar os centróides da camada oculta: K-Means (supervisionado no posicionamento) \textit{vs.}\ amostras aleatórias do conjunto de treino. Em geral, espera-se que o K-Means produza centróides mais representativos da distribuição dos dados, mas o ELM tem vantagem computacional e pode ser suficiente quando $K$ é suficientemente grande~\cite{negri2021}.
+
+\placeholder{Comparar os resultados de OA e $\kappa$ dos dois métodos nos dois datasets e discutir a relação custo-benefício.}
+
+\subsection{Agrupamento: Métodos Hard \textit{vs.}\ Fuzzy}
+
+O FKM, ao contrário do K-Means, permite que amostras pertençam parcialmente a mais de um cluster. Isso é especialmente relevante em dados com sobreposição entre classes -- como o dataset Artificial, que contém atributos redundantes e ruidosos. O parâmetro $\beta=2$ controla o grau de fuzzificação: $\beta \to 1$ recupera o K-Means rígido, e $\beta \to \infty$ distribui uniformemente as pertinências.
+
+\placeholder{Discutir aqui se o FKM apresentou ganhos em relação ao K-Means nos datasets analisados, com base nos valores de SC, CHI e V-measure.}
+
+\subsection{BSAS: Sensibilidade ao Limiar $\Theta$}
+
+O BSAS é o único método analisado que determina automaticamente o número de clusters (limitado a $c_{\max}$), dado o limiar $\Theta$. Isso é uma vantagem em cenários onde $c$ é desconhecido, mas exige calibração cuidadosa: valores de $\Theta$ muito baixos fragmentam clusters verdadeiros, enquanto valores muito altos os fundem. \placeholder{Descrever o valor de $\Theta$ adotado e como ele foi determinado.}
+
+% ===================================================================
+\section{Conclusão}
+\label{sec:conclusao}
+
+Esta atividade investigou o efeito da redução de dimensionalidade sobre o desempenho de quatro classificadores e avaliou a capacidade de quatro algoritmos de agrupamento em recuperar estrutura latente em dois datasets com características distintas.
+
+Os resultados confirmam que a alta dimensionalidade -- especialmente no dataset Olivetti Faces -- apresenta desafios que métodos como PCA e SFFS ajudam a mitigar. \placeholder{Completar com as principais conclusões derivadas dos resultados obtidos: qual método de classificação foi superior, qual configuração dimensional foi mais adequada, e qual algoritmo de agrupamento revelou melhor estrutura.}
+
+A comparação entre os métodos obrigatórios da Atividade III (PolyMap-RBFNet-SSE) e da Atividade IV (Random Neurons -- ELM) evidencia o trade-off entre custo computacional e precisão. \placeholder{Concluir sobre o mérito relativo de cada abordagem no contexto dos datasets analisados.}
+
+Para trabalhos futuros, seria interessante explorar: (i) outros critérios de parada para o SFFS; (ii) outras variantes do FKM com $\beta > 2$; (iii) avaliação do impacto do número de neurônios ocultos $K$ no desempenho do ELM e da RBFNet.
+
+% ===================================================================
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+
+\bibitem{negri2021}
+Negri, R.\ G.
+\newblock \textit{Reconhecimento de Padrões Computacional}.
+\newblock Blucher, São Paulo, 2021.
+
+\bibitem{bishop2006}
+Bishop, C.\ M.
+\newblock \textit{Pattern Recognition and Machine Learning}.
+\newblock Springer, New York, 2006.
+
+\bibitem{theodoridis2008}
+Theodoridis, S.; Koutroumbas, K.
+\newblock \textit{Pattern Recognition}.
+\newblock 4th ed. Academic Press, Burlington, 2008.
+
+\bibitem{samaria1994}
+Samaria, F.; Harter, A.
+\newblock Parameterisation of a stochastic model for human face identification.
+\newblock In: \textit{Proceedings of 2nd IEEE Workshop on Applications of Computer Vision}, pp.\ 138--142, 1994.
+
+\end{thebibliography}
+
+\end{document}
