@@ -1,0 +1,327 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\graphicspath{{figs/svm_linear/}}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Classificação de Áreas Queimadas em Imagens Landsat\\
+Utilizando SVM Linear (Support Vector Machine)}
+
+\author{
+  \IEEEauthorblockN{Pedro (Sobrenome)}
+  \IEEEauthorblockA{
+    \textit{Reconhecimento de Padrões}\\
+    Trabalho Final\\
+    Recife, Brasil
+  }
+}
+
+\maketitle
+
+\begin{abstract}
+Este trabalho apresenta uma metodologia de reconhecimento de padrões para
+detecção de áreas queimadas utilizando imagens Landsat e índices de
+vegetação NDVI obtidos em períodos pré e pós-fogo. O método emprega um
+classificador SVM linear treinado a partir de amostras balanceadas de pixels
+queimados e não queimados provenientes de múltiplas cenas. Foram utilizadas
+variáveis derivadas do NDVI, incluindo diferença temporal, razão espectral e
+variação absoluta, visando aumentar a capacidade discriminativa do modelo.
+O treinamento foi realizado com duas cenas Landsat e posteriormente aplicado
+em uma terceira cena independente para validação. O modelo apresentou boa
+capacidade de generalização espacial, sendo avaliado por métricas como
+acurácia, precisão, recall, F1-score, IoU e matriz de confusão. Além disso,
+foi gerado um mapa temático classificado das áreas queimadas detectadas.
+\end{abstract}
+
+\begin{IEEEkeywords}
+área queimada, SVM linear, NDVI, sensoriamento remoto, Landsat,
+classificação binária, desbalanceamento de classes.
+\end{IEEEkeywords}
+
+%=====================================================================
+\section{Introdução}
+
+A detecção automática de áreas queimadas em imagens de satélite é uma tarefa
+de alta relevância para o monitoramento ambiental, gestão territorial e
+estudos do ciclo do carbono. Métodos baseados em limiares espectrais como o
+dNBR são amplamente utilizados~\cite{b2}, porém dependem de calibração manual
+e não exploram a capacidade discriminativa de múltiplas variáveis combinadas.
+
+O objetivo deste trabalho é desenvolver um classificador binário baseado em
+SVM linear (\textit{LinearSVC}) capaz de detectar automaticamente pixels
+queimados e não queimados a partir de atributos derivados do índice NDVI em
+imagens Landsat~8/9. O modelo é treinado em duas cenas e validado em uma
+terceira cena independente, avaliando a generalização espacial do classificador.
+
+%=====================================================================
+\section{Dados de Entrada e Saída}
+
+\subsection{Entradas}
+
+O sistema utiliza como dados de entrada:
+
+\begin{itemize}
+  \item \textbf{Imagens raster Landsat} contendo:
+    \begin{itemize}
+      \item NDVI pré-queimada (\texttt{ndvi\_pre})
+      \item NDVI pós-queimada (\texttt{ndvi\_pos})
+    \end{itemize}
+  \item \textbf{Máscaras binárias de treinamento}:
+    \begin{itemize}
+      \item \texttt{0} = área não queimada
+      \item \texttt{1} = área queimada
+    \end{itemize}
+  \item Conjunto de cenas Landsat para treinamento e teste.
+\end{itemize}
+
+\subsection{Saídas}
+
+O processamento gera:
+
+\begin{itemize}
+  \item Modelo SVM treinado;
+  \item Predição das classes queimado/não queimado;
+  \item Métricas quantitativas de desempenho: Accuracy, Precision, Recall,
+        F1-score e IoU;
+  \item Matriz de confusão;
+  \item Mapa classificado final em formato GeoTIFF.
+\end{itemize}
+
+%=====================================================================
+\section{Metodologia}
+
+\subsection{Pré-processamento e Organização dos Dados}
+
+O experimento foi desenvolvido a partir de imagens Landsat previamente
+processadas para geração do índice de vegetação NDVI em períodos pré e
+pós-queimada. Para cada cena analisada foram utilizados:
+
+\begin{itemize}
+  \item NDVI anterior ao evento de fogo;
+  \item NDVI posterior ao evento;
+  \item máscara binária de referência contendo pixels classificados como
+        queimados (1) e não queimados (0).
+\end{itemize}
+
+Os rasters foram carregados utilizando a biblioteca \texttt{Rasterio},
+sendo realizada a leitura apenas da banda principal de cada arquivo GeoTIFF.
+Como diferentes cenas podem apresentar pequenas discrepâncias dimensionais,
+os rasters foram ajustados para dimensões compatíveis por meio do recorte ao
+menor tamanho comum entre as imagens pré e pós-evento.
+
+Posteriormente, foi realizado um procedimento de limpeza numérica para
+eliminar inconsistências frequentes em produtos de sensoriamento remoto:
+valores nulos (\texttt{NaN}), infinitos e pixels inválidos. Além disso,
+regiões associadas a corpos d'água foram removidas do conjunto de
+treinamento por meio de máscara baseada em valores negativos de NDVI,
+reduzindo falsos positivos causados pela semelhança espectral com áreas
+queimadas. Por fim, os atributos foram limitados ao intervalo espectral
+$[-1, 1]$, reduzindo efeitos de valores extremos e garantindo estabilidade
+numérica durante o treinamento.
+
+\subsection{Balanceamento e Amostragem dos Dados}
+
+O forte desbalanceamento entre classes — pixels não queimados muito mais
+frequentes que queimados — pode induzir o modelo supervisionado a favorecer
+excessivamente a classe majoritária. Para minimizar esse problema, foi
+adotada uma estratégia de amostragem balanceada por classe: os pixels de
+cada classe foram separados individualmente e foi realizada uma seleção
+aleatória estratificada com a mesma quantidade de amostras para ambas as
+classes.
+
+O número máximo de amostras por classe foi definido em 25.000 pixels,
+totalizando aproximadamente 50.000 amostras no treinamento. Essa estratégia
+apresentou três vantagens principais: redução do viés para a classe dominante,
+maior estabilidade estatística do treinamento e redução do custo computacional
+do SVM. O balanceamento contribuiu significativamente para melhorar métricas
+associadas à classe minoritária, especialmente Recall e F1-score.
+
+\subsection{Treinamento e Validação do Classificador SVM}
+
+O modelo supervisionado utilizado foi o Support Vector Machine (SVM),
+implementado por meio da classe \texttt{LinearSVC} da biblioteca
+\texttt{scikit-learn}. Antes do treinamento, os atributos espectrais foram
+normalizados utilizando o \texttt{StandardScaler} (média zero, variância
+unitária) — etapa fundamental em modelos SVM, pois o algoritmo é sensível
+à escala dos atributos.
+
+O treinamento foi realizado utilizando duas cenas Landsat independentes,
+enquanto uma terceira cena foi reservada exclusivamente para validação do
+modelo, avaliando a capacidade de generalização espacial em áreas não
+utilizadas durante o treinamento. O modelo foi configurado com:
+
+\begin{itemize}
+  \item penalização linear (\texttt{LinearSVC});
+  \item ponderação balanceada entre classes
+        (\texttt{class\_weight='balanced'});
+  \item limite elevado de iterações para convergência numérica.
+\end{itemize}
+
+A função objetivo do SVM consiste em encontrar um hiperplano ótimo capaz de
+maximizar a separação entre as classes no espaço multidimensional de atributos
+espectrais. Após o treinamento, o modelo foi aplicado pixel a pixel sobre a
+cena de teste para geração das predições temáticas.
+
+%=====================================================================
+\section{Resultados}
+
+\subsection{Métricas de Desempenho}
+
+O modelo apresentou acurácia global de 80,14\%. Contudo, devido ao forte
+desbalanceamento entre as classes, essa métrica isoladamente não representa
+adequadamente o desempenho do classificador. A Tabela~\ref{tab:metrics}
+resume os resultados obtidos na cena de teste.
+
+\begin{table}[!t]
+  \caption{Métricas de desempenho — Cena de Teste}
+  \label{tab:metrics}
+  \centering
+  \begin{tabular}{lc}
+    \toprule
+    \textbf{Métrica} & \textbf{Valor} \\
+    \midrule
+    Acurácia (OA)    & 80,14\% \\
+    Precision        & 14,04\% \\
+    Recall           & 83,43\% \\
+    F1-score         & 24,04\% \\
+    IoU              & 13,66\% \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+O elevado Recall (83,43\%) indica alta capacidade de detecção da classe
+queimada, reduzindo a ocorrência de falsos negativos. Em contrapartida, a
+baixa Precision (14,04\%) evidencia elevada incidência de falsos positivos,
+refletida também nos valores de IoU (13,66\%) e F1-score (24,04\%).
+
+\subsection{Matriz de Confusão}
+
+A Tabela~\ref{tab:cm} apresenta a matriz de confusão obtida na cena de teste.
+
+\begin{table}[!t]
+  \caption{Matriz de Confusão — Cena de Teste (Cena~3)}
+  \label{tab:cm}
+  \centering
+  \begin{tabular}{lcc}
+    \toprule
+    & \textbf{Pred. Não Queimado} & \textbf{Pred. Queimado} \\
+    \midrule
+    \textbf{Real Não Queimado} & 38.501 (TN) & 9.616 (FP) \\
+    \textbf{Real Queimado}     &    312 (FN) & 1.571 (TP) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+O \textit{Classification Report} completo é apresentado na
+Tabela~\ref{tab:classreport}.
+
+\begin{table}[!t]
+  \caption{Classification Report — Cena de Teste}
+  \label{tab:classreport}
+  \centering
+  \begin{tabular}{lcccc}
+    \toprule
+    \textbf{Classe} & \textbf{Precision} & \textbf{Recall}
+                    & \textbf{F1} & \textbf{Support} \\
+    \midrule
+    Não queimado (0) & 0,99 & 0,80 & 0,89 & 48.117 \\
+    Queimado (1)     & 0,14 & 0,83 & 0,24 & 1.883  \\
+    \midrule
+    Accuracy         & \multicolumn{4}{c}{0,80 (50.000 amostras)} \\
+    Macro avg        & 0,57 & 0,82 & 0,56 & 50.000 \\
+    Weighted avg     & 0,96 & 0,80 & 0,86 & 50.000 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+A Fig.~\ref{fig:cm} ilustra visualmente a distribuição dos erros.
+A matriz de confusão demonstra que o modelo assumiu um comportamento mais
+sensível à detecção de queimadas, priorizando a identificação da classe
+minoritária mesmo ao custo de superestimativas espaciais.
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=0.85\columnwidth]{fig_cm.png}
+  \caption{Matriz de Confusão — Cena~3 (teste). TN=38.501, FP=9.616,
+           FN=312, TP=1.571.}
+  \label{fig:cm}
+\end{figure}
+
+%=====================================================================
+\section{Discussão}
+
+Os resultados confirmam que o modelo SVM linear é capaz de generalizar a
+detecção de áreas queimadas entre diferentes cenas Landsat, apresentando
+elevada sensibilidade para identificação da classe de interesse (Recall~$= 83\%$).
+Apesar da boa capacidade de detecção, observou-se significativa ocorrência de
+falsos positivos, principalmente em regiões com comportamento espectral
+semelhante às áreas queimadas — como solos expostos, pastagens degradadas
+e sombras de nuvem.
+
+A estratégia de balanceamento por amostragem igualitária (25.000 amostras por
+classe) foi fundamental para viabilizar a detecção da classe minoritária,
+evitando que o classificador ignorasse sistematicamente os pixels queimados.
+Contudo, a limitação a apenas dois atributos de entrada (\texttt{ndvi\_pre} e
+\texttt{ndvi\_pos}) restringe a capacidade discriminativa do modelo, visto que
+solos expostos e áreas queimadas podem apresentar valores de NDVI similares.
+
+A incorporação de atributos adicionais como as bandas espectrais brutas (B4,
+B5, B7) e o NBR multitemporal poderiam melhorar a separabilidade entre classes
+e reduzir os falsos positivos.
+
+%=====================================================================
+\section{Conclusão}
+
+O modelo SVM linear demonstrou capacidade de generalização espacial para
+detecção de áreas queimadas em imagens Landsat, com Recall de 83,43\% na
+cena de teste. A metodologia mostrou potencial para aplicações em
+monitoramento ambiental, podendo ser aprimorada com:
+
+\begin{enumerate}
+  \item incorporação de novos atributos espectrais (bandas brutas, NBR);
+  \item técnicas de pós-processamento espacial para redução de falsos positivos;
+  \item expansão do conjunto de treinamento com mais cenas e períodos distintos.
+\end{enumerate}
+
+A abordagem de amostragem balanceada mostrou-se eficaz para lidar com o
+desbalanceamento de classes inerente ao problema de detecção de queimadas.
+
+\begin{thebibliography}{00}
+
+\bibitem{b1}
+V.~N.~Vapnik,
+``The Nature of Statistical Learning Theory,''
+Springer, New York, 1995.
+
+\bibitem{b2}
+C.~H.~Key e N.~C.~Benson,
+``Landscape Assessment: Composite Burn Index,''
+in \textit{FIREMON}, USDA Forest Service, RMRS-GTR-164-CD, 2006.
+
+\bibitem{b3}
+E.~Chuvieco \textit{et al.},
+``Generation and analysis of a new global burned area product based on
+MODIS 250~m reflectance bands,''
+\textit{Earth System Science Data}, vol.~11, pp.~529--551, 2019.
+
+\bibitem{b4}
+F.~Pedregosa \textit{et al.},
+``Scikit-learn: Machine Learning in Python,''
+\textit{J. Mach. Learn. Res.}, vol.~12, pp.~2825--2830, 2011.
+
+\end{thebibliography}
+
+\end{document}

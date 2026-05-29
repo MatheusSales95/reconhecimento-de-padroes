@@ -1,0 +1,209 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\title{Avaliação do Modelo KNN para Detecção de Áreas Queimadas}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+\section{Treinamento e Avaliação do Modelo KNN para Detecção de Áreas Queimadas}
+
+O primeiro modelo avaliado neste trabalho foi o algoritmo \textbf{K-Nearest Neighbors (KNN)}, um método supervisionado amplamente utilizado em tarefas de classificação.
+
+O KNN realiza a classificação com base na similaridade entre amostras. Para cada novo pixel analisado, o algoritmo identifica os $K$ vizinhos mais próximos no conjunto de treinamento e atribui a classe predominante entre eles.
+
+Neste experimento foram utilizados:
+
+\begin{itemize}
+    \item $K = 5$ vizinhos;
+    \item Padronização das variáveis utilizando \texttt{StandardScaler};
+    \item Classificação binária:
+    \begin{itemize}
+        \item Classe 0: Não queimada;
+        \item Classe 1: Queimada.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Pré-processamento e geração das amostras}
+
+Inicialmente, a abordagem utilizava todos os pixels das imagens como amostras de treinamento. Entretanto, visando reduzir ruídos e melhorar a qualidade dos dados, foi adotada uma nova estratégia baseada em pontos vetoriais gerados manualmente no QGIS.
+
+Foram utilizados dois arquivos shapefile:
+
+\begin{itemize}
+    \item \texttt{pontos\_mistos.shp}: contendo amostras das classes 0 e 1;
+    \item \texttt{pontos\_nao\_qmd.shp}: contendo apenas amostras da classe 0.
+\end{itemize}
+
+A identificação das classes foi realizada a partir da coluna:
+
+\begin{center}
+\texttt{class}
+\end{center}
+
+Durante o pré-processamento:
+
+\begin{itemize}
+    \item Os pontos foram convertidos para coordenadas raster;
+    \item Foram extraídos apenas os pixels correspondentes aos pontos amostrados;
+    \item Pixels localizados em regiões \textit{NoData} foram removidos;
+    \item As variáveis foram normalizadas antes do treinamento.
+\end{itemize}
+
+\subsection{Índices espectrais utilizados}
+
+Foram utilizadas imagens Landsat pré e pós-fogo:
+
+\begin{itemize}
+    \item Pré-fogo: Landsat 8;
+    \item Pós-fogo: Landsat 9.
+\end{itemize}
+
+A partir das bandas espectrais foram calculados os seguintes índices:
+
+\begin{itemize}
+    \item \textbf{dNBR} --- Delta Normalized Burn Ratio;
+    \item \textbf{dNBRSWIR};
+    \item \textbf{dNDVI} --- Delta Normalized Difference Vegetation Index.
+\end{itemize}
+
+Esses índices representam alterações espectrais relacionadas à perda de vegetação e à severidade da queima.
+
+\subsection{Cena utilizada no treinamento}
+
+A Figura~\ref{fig:cena_treinamento} apresenta a cena Landsat utilizada no treinamento do modelo KNN.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{cena_treinamento.png}
+    \caption{Cena Landsat utilizada no treinamento do modelo KNN.}
+    \label{fig:cena_treinamento}
+\end{figure}
+
+\subsection{Resultados do treinamento}
+
+O conjunto de dados foi dividido em:
+
+\begin{itemize}
+    \item 70\% para treinamento;
+    \item 30\% para teste.
+\end{itemize}
+
+Os resultados obtidos durante a validação interna foram:
+
+\begin{table}[H]
+\centering
+\caption{Métricas obtidas no conjunto de treinamento/teste interno.}
+\begin{tabular}{lccc}
+\hline
+Classe & Precision & Recall & F1-score \\
+\hline
+0 (Não queimada) & 0.76 & 0.69 & 0.72 \\
+1 (Queimada)     & 0.71 & 0.77 & 0.74 \\
+\hline
+\end{tabular}
+\end{table}
+
+O modelo apresentou:
+
+\begin{itemize}
+    \item Accuracy: 0.73;
+    \item F1-score médio: 0.73.
+\end{itemize}
+
+Esses resultados indicaram desempenho moderadamente satisfatório dentro da própria cena utilizada no treinamento.
+
+\subsection{Avaliação em nova cena}
+
+Após o treinamento, o modelo foi aplicado em uma nova cena Landsat, distinta daquela utilizada durante o treinamento.
+
+A Figura~\ref{fig:cena_teste} apresenta a cena de teste utilizada para avaliar a capacidade de generalização espacial do modelo.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{cena_teste.png}
+    \caption{Cena Landsat utilizada para teste do modelo KNN.}
+    \label{fig:cena_teste}
+\end{figure}
+
+A Figura~\ref{fig:cena_classificada} apresenta o resultado da classificação produzida pelo modelo KNN na nova cena.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{cena_teste_classificada.png}
+    \caption{Resultado da classificação da nova cena utilizando o modelo KNN.}
+    \label{fig:cena_classificada}
+\end{figure}
+
+Os resultados quantitativos obtidos foram:
+
+\begin{table}[H]
+\centering
+\caption{Métricas obtidas na nova cena Landsat.}
+\begin{tabular}{lccc}
+\hline
+Classe & Precision & Recall & F1-score \\
+\hline
+0 (Não queimada) & 0.99 & 0.69 & 0.81 \\
+1 (Queimada)     & 0.09 & 0.82 & 0.17 \\
+\hline
+\end{tabular}
+\end{table}
+
+Métricas globais:
+
+\begin{itemize}
+    \item Accuracy: 0.69;
+    \item Precision: 0.094;
+    \item Recall: 0.825;
+    \item F1-score: 0.169.
+\end{itemize}
+
+\subsection{Análise dos resultados}
+
+Embora o modelo tenha apresentado desempenho razoável durante o treinamento, os resultados obtidos na nova cena foram significativamente inferiores.
+
+O principal problema observado foi a baixa capacidade de generalização espacial do modelo. Na prática, verificou-se:
+
+\begin{itemize}
+    \item Grande quantidade de falsos positivos;
+    \item Superestimação das áreas queimadas;
+    \item Sensibilidade às diferenças radiométricas entre cenas;
+    \item Forte dependência das características específicas da cena de treinamento.
+\end{itemize}
+
+A precisão da classe ``Queimada'' caiu para aproximadamente 9\%, indicando que a maior parte dos pixels classificados como queimados eram, na realidade, áreas não queimadas.
+
+Apesar do \textit{recall} elevado (0.82), o modelo apresentou baixa confiabilidade prática devido à elevada taxa de falsos positivos.
+
+\subsection{Comparação entre treinamento e teste}
+
+A Figura~\ref{fig:comparacao_metricas} apresenta uma comparação entre as principais métricas obtidas no treinamento e na nova cena de teste.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\linewidth]{grafico_metricas_knn.png}
+    \caption{Comparação das métricas entre treinamento e teste em nova cena.}
+    \label{fig:comparacao_metricas}
+\end{figure}
+
+Observa-se que, embora a acurácia geral tenha permanecido relativamente próxima, houve uma queda significativa na precisão e no F1-score da classe ``Queimada'', evidenciando a limitação do modelo em cenários distintos do treinamento.
+
+\subsection{Conclusão}
+
+Os resultados demonstraram que o modelo KNN conseguiu aprender parcialmente os padrões espectrais presentes na cena de treinamento, alcançando aproximadamente 73\% de acurácia.
+
+Entretanto, quando aplicado em novas cenas Landsat, o modelo apresentou forte degradação de desempenho, principalmente devido ao aumento expressivo de falsos positivos.
+
+Esses resultados indicam que o KNN apresentou baixa robustez para generalização espacial em aplicações de sensoriamento remoto para detecção de áreas queimadas.
+
+
+\end{document}
